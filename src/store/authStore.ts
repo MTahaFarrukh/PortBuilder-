@@ -11,7 +11,7 @@ import {
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 interface AuthStore extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -26,71 +26,67 @@ export const useAuthStore = create<AuthStore>((set) => ({
   error: null,
 
   login: async (email: string, password: string) => {
-  set({ isLoading: true, error: null });
-  try {
-    // Firebase Authentication will validate credentials
-    const firebaseUserCredential = await signInWithEmailAndPassword(auth, email, password);
-    const { user: firebaseUser } = firebaseUserCredential;
+    set({ isLoading: true, error: null });
+    try {
+      const firebaseUserCredential = await signInWithEmailAndPassword(auth, email, password);
+      const { user: firebaseUser } = firebaseUserCredential;
 
-    // Get additional user data from Firestore
-    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-    const userData = userDoc.data();
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      const userData = userDoc.data();
 
-    const user: User = {
-      id: firebaseUser.uid,
-      email: firebaseUser.email!,
-      name: userData?.name || firebaseUser.displayName || 'User',
-      createdAt: userData?.createdAt || firebaseUser.metadata.creationTime || new Date().toISOString(),
-    };
+      const user: User = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email!,
+        name: userData?.name || firebaseUser.displayName || 'User',
+        createdAt: userData?.createdAt || firebaseUser.metadata.creationTime || new Date().toISOString(),
+      };
 
-    const token = await firebaseUser.getIdToken();
-    set({ user, token, isAuthenticated: true, isLoading: false });
+      const token = await firebaseUser.getIdToken();
+      set({ user, token, isAuthenticated: true, isLoading: false });
+      return true;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to sign in',
+        isLoading: false,
+      });
+      return false;
+    }
+  },
 
-  } catch (error) {
-    set({ 
-      error: error instanceof Error ? error.message : 'Failed to sign in', 
-      isLoading: false 
-    });
-  }
-},
+  register: async (email: string, password: string, name: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const { user: firebaseUser } = userCredential;
 
+      await updateProfile(firebaseUser, { displayName: name });
 
+      const userData = {
+        name,
+        email,
+        password, // ⚠️ NEVER store passwords like this in real apps!
+        createdAt: new Date().toISOString(),
+      };
 
- register: async (email: string, password: string, name: string) => {
-  set({ isLoading: true, error: null });
-  try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const { user: firebaseUser } = userCredential;
+      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
 
-    await updateProfile(firebaseUser, { displayName: name });
+      const user: User = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email!,
+        name,
+        createdAt: userData.createdAt,
+      };
 
-    const userData = {
-      name,
-      email,
-      password, // ⛔️ WARNING: Never store passwords in plain text in production!
-      createdAt: new Date().toISOString(),
-    };
-
-    await setDoc(doc(db, 'users', firebaseUser.uid), userData);
-
-    const user: User = {
-      id: firebaseUser.uid,
-      email: firebaseUser.email!,
-      name,
-      createdAt: userData.createdAt,
-    };
-
-    const token = await firebaseUser.getIdToken();
-    set({ user, token, isAuthenticated: true, isLoading: false });
-  } catch (error) {
-    set({ 
-      error: error instanceof Error ? error.message : 'Failed to register', 
-      isLoading: false 
-    });
-  }
-},
-
-
+      const token = await firebaseUser.getIdToken();
+      set({ user, token, isAuthenticated: true, isLoading: false });
+    } catch (error: any) {
+      set({
+        error: error.message || 'Failed to register',
+        isLoading: false,
+      });
+      throw error; // ✅ VERY IMPORTANT so UI can catch the error
+    }
+  },
 
   logout: async () => {
     try {
@@ -103,23 +99,20 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   checkAuth: async () => {
     set({ isLoading: true });
-    
     return new Promise<void>((resolve) => {
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         if (firebaseUser) {
           const token = await firebaseUser.getIdToken();
-          
-          // Get user data from Firestore
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           const userData = userDoc.data();
-          
+
           const user: User = {
             id: firebaseUser.uid,
             email: firebaseUser.email!,
             name: userData?.name || firebaseUser.displayName || 'User',
             createdAt: userData?.createdAt || firebaseUser.metadata.creationTime || new Date().toISOString(),
           };
-          
+
           set({ user, token, isAuthenticated: true, isLoading: false });
         } else {
           set({ user: null, token: null, isAuthenticated: false, isLoading: false });
@@ -132,5 +125,5 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   clearError: () => {
     set({ error: null });
-  }
+  },
 }));
