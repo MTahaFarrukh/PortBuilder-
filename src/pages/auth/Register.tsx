@@ -23,7 +23,8 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 const Register: React.FC = () => {
   const navigate = useNavigate();
   const { register: registerUser, isLoading, error, clearError } = useAuthStore();
-  
+  const [localError, setLocalError] = React.useState<string | null>(null);
+
   const {
     register,
     handleSubmit,
@@ -33,13 +34,25 @@ const Register: React.FC = () => {
   });
 
   const onSubmit = async (data: RegisterFormValues) => {
-    await registerUser(data.email, data.password, data.name);
-    navigate('/');
+    setLocalError(null); // clear local error
+    clearError(); // clear global error
+
+    try {
+      await registerUser(data.email, data.password, data.name);
+      navigate('/login'); // success: redirect to login
+    } catch (e: any) {
+      if (e?.code === 'auth/email-already-in-use') {
+        setLocalError('Email is already registered');
+      } else {
+        setLocalError('Something went wrong. Please try again.');
+      }
+    }
   };
 
   React.useEffect(() => {
     return () => {
       clearError();
+      setLocalError(null);
     };
   }, [clearError]);
 
@@ -58,13 +71,13 @@ const Register: React.FC = () => {
             </Link>
           </p>
         </div>
-        
-        {error && (
+
+        {localError && (
           <div className="bg-error-50 dark:bg-error-900/30 text-error-800 dark:text-error-200 p-3 rounded-md text-sm">
-            {error}
+            {localError}
           </div>
         )}
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
             <Input 
