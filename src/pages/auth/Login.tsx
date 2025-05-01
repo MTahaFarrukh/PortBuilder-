@@ -18,7 +18,8 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login, isLoading, error, clearError } = useAuthStore();
-  
+  const [localError, setLocalError] = React.useState<string | null>(null);
+
   const {
     register,
     handleSubmit,
@@ -28,13 +29,21 @@ const Login: React.FC = () => {
   });
 
   const onSubmit = async (data: LoginFormValues) => {
+    setLocalError(null); // Reset local error
     await login(data.email, data.password);
-    navigate('/');
+
+    const storeError = useAuthStore.getState().error;
+    if (!storeError) {
+      navigate('/');
+    } else {
+      setLocalError('Incorrect email or password');
+    }
   };
 
   React.useEffect(() => {
     return () => {
       clearError();
+      setLocalError(null);
     };
   }, [clearError]);
 
@@ -53,13 +62,7 @@ const Login: React.FC = () => {
             </Link>
           </p>
         </div>
-        
-        {error && (
-          <div className="bg-error-50 dark:bg-error-900/30 text-error-800 dark:text-error-200 p-3 rounded-md text-sm">
-            {error}
-          </div>
-        )}
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
             <Input 
@@ -77,6 +80,12 @@ const Login: React.FC = () => {
               error={errors.password?.message}
               {...register('password')}
             />
+
+            {localError && (
+              <p className="text-sm text-red-600 dark:text-red-400 pt-1 pl-1">
+                {localError}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-between">
